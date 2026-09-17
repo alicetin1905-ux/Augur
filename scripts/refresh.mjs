@@ -42,10 +42,8 @@ const LEAGUES = (process.env.ODDS_LEAGUES || [
   'soccer_efl_champ',
   'soccer_spain_la_liga',
   'soccer_spain_segunda_division',
-  'soccer_italy_serie_a',
   'soccer_germany_bundesliga',
   'soccer_germany_bundesliga2',
-  'soccer_france_ligue_one',
   'soccer_turkey_super_league',
   'soccer_uefa_champs_league',
 ].join(',')).split(',').map((s) => s.trim()).filter(Boolean);

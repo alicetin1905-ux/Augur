@@ -40,8 +40,8 @@ dashboard works immediately after the first deploy, with no signup required.
 
 Which leagues are queried is controlled by `ODDS_LEAGUES` (comma-separated
 [sport keys](https://the-odds-api.com/sports-odds-data/soccer-odds.html)),
-default is EPL, the Championship, La Liga, La Liga 2, Serie A, Bundesliga,
-2. Bundesliga, Ligue 1, the Turkish Süper Lig and the Champions League.
+default is EPL, the Championship, La Liga, La Liga 2, Bundesliga,
+2. Bundesliga, the Turkish Süper Lig and the Champions League.
 
 The `h2h` (match winner) market comes from the main odds endpoint, one
 request per league. The `btts` market is only available per event (The Odds
