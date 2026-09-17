@@ -42,6 +42,14 @@ Which leagues are queried is controlled by `ODDS_LEAGUES` (comma-separated
 [sport keys](https://the-odds-api.com/sports-odds-data/soccer-odds.html),
 default is the top five European leagues plus the Champions League).
 
+The `h2h` (match winner) market comes from the main odds endpoint, one
+request per league. The `btts` market is only available per event (The Odds
+API's "additional markets" restriction), so the script makes one further
+request per upcoming fixture. `EVENTS_PER_LEAGUE` (default 8) caps how many
+of each league's soonest fixtures get a btts lookup, to keep a single
+refresh well inside the free-tier monthly quota — lower it if you add more
+leagues or a tighter cron schedule.
+
 ## Running locally
 
 ```sh

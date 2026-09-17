@@ -14,6 +14,13 @@
  * requests/month) and set it as ODDS_API_KEY. Without a key this script
  * still runs, using the bundled sample fixtures in lib/sample-data.mjs, so
  * the dashboard works out of the box before you've signed up for anything.
+ *
+ * The main /odds endpoint only serves h2h/spreads/totals — "additional"
+ * markets like btts are only available per event via /events/{id}/odds
+ * (see https://the-odds-api.com/liveapi/guides/v4/#get-event-odds), so this
+ * makes one call per league for fixtures + h2h, then one call per upcoming
+ * event for btts. EVENTS_PER_LEAGUE caps that fan-out to stay within the
+ * free tier's monthly quota.
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
@@ -39,6 +46,10 @@ const LEAGUES = (process.env.ODDS_LEAGUES || [
   'soccer_uefa_champs_league',
 ].join(',')).split(',').map((s) => s.trim()).filter(Boolean);
 const MAX_MATCHES = Number(process.env.MAX_MATCHES || 200);
+// Each event needs its own request for the btts market, so this bounds the
+// fan-out per league to keep a refresh within the free-tier monthly quota.
+const EVENTS_PER_LEAGUE = Number(process.env.EVENTS_PER_LEAGUE || 8);
+const CONCURRENCY = Number(process.env.CONCURRENCY || 4);
 
 const log = (...a) => console.log('[refresh]', ...a);
 
@@ -55,49 +66,75 @@ const retry = async (fn, tries = 3, wait = 1500) => {
   throw lastErr;
 };
 
-async function fetchLeagueEvents(sportKey) {
-  const url = `${API_BASE}/sports/${sportKey}/odds/?apiKey=${API_KEY}&regions=${REGIONS}&markets=h2h,btts&oddsFormat=decimal`;
+/** Run tasks with bounded concurrency, tolerating individual failures. */
+async function pool(items, worker, limit = CONCURRENCY) {
+  const out = [];
+  let i = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (i < items.length) {
+      const idx = i++;
+      try {
+        out[idx] = await worker(items[idx], idx);
+      } catch (err) {
+        out[idx] = null;
+      }
+    }
+  });
+  await Promise.all(runners);
+  return out;
+}
+
+async function fetchJson(url) {
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${sportKey}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url.split('?')[0]}: ${(await res.text()).slice(0, 200)}`);
   return res.json();
 }
 
-/** Read the h2h and btts markets out of one bookmaker's quotes for an event. */
-function bookmakerProbs(bookmaker, homeTeam, awayTeam) {
-  const h2h = bookmaker.markets?.find((m) => m.key === 'h2h');
-  const btts = bookmaker.markets?.find((m) => m.key === 'btts');
-  let h2hProbs = null;
-  if (h2h) {
-    const home = h2h.outcomes.find((o) => o.name === homeTeam);
-    const draw = h2h.outcomes.find((o) => o.name === 'Draw');
-    const away = h2h.outcomes.find((o) => o.name === awayTeam);
-    if (home && draw && away) {
-      const p = [impliedProb(home.price), impliedProb(draw.price), impliedProb(away.price)];
-      if (p.every(Number.isFinite)) h2hProbs = p; // [home, draw, away]
-    }
-  }
-  let bttsProbs = null;
-  if (btts) {
-    const yes = btts.outcomes.find((o) => o.name === 'Yes');
-    const no = btts.outcomes.find((o) => o.name === 'No');
-    if (yes && no) {
-      const p = [impliedProb(yes.price), impliedProb(no.price)];
-      if (p.every(Number.isFinite)) bttsProbs = p; // [yes, no]
-    }
-  }
-  return { h2hProbs, bttsProbs };
+/** Fixtures + match-winner odds for a league — the only markets the main endpoint serves. */
+async function fetchLeagueH2h(sportKey) {
+  return fetchJson(`${API_BASE}/sports/${sportKey}/odds/?apiKey=${API_KEY}&regions=${REGIONS}&markets=h2h&oddsFormat=decimal`);
 }
 
-/** Turn one raw event (API or sample shape) into a ranked match record. */
-function normalizeEvent(event) {
+/** The btts market for one event — only available through the per-event endpoint. */
+async function fetchEventBtts(sportKey, eventId) {
+  return fetchJson(`${API_BASE}/sports/${sportKey}/events/${eventId}/odds/?apiKey=${API_KEY}&regions=${REGIONS}&markets=btts&oddsFormat=decimal`);
+}
+
+/** Read the h2h market out of one bookmaker's quotes for an event. */
+function h2hProbsFor(bookmaker, homeTeam, awayTeam) {
+  const h2h = bookmaker.markets?.find((m) => m.key === 'h2h');
+  if (!h2h) return null;
+  const home = h2h.outcomes.find((o) => o.name === homeTeam);
+  const draw = h2h.outcomes.find((o) => o.name === 'Draw');
+  const away = h2h.outcomes.find((o) => o.name === awayTeam);
+  if (!home || !draw || !away) return null;
+  const p = [impliedProb(home.price), impliedProb(draw.price), impliedProb(away.price)];
+  return p.every(Number.isFinite) ? p : null; // [home, draw, away]
+}
+
+/** Read the btts market out of one bookmaker's quotes for an event. */
+function bttsProbsFor(bookmaker) {
+  const btts = bookmaker.markets?.find((m) => m.key === 'btts');
+  if (!btts) return null;
+  const yes = btts.outcomes.find((o) => o.name === 'Yes');
+  const no = btts.outcomes.find((o) => o.name === 'No');
+  if (!yes || !no) return null;
+  const p = [impliedProb(yes.price), impliedProb(no.price)];
+  return p.every(Number.isFinite) ? p : null; // [yes, no]
+}
+
+/** Combine one event's h2h response with its btts response into a ranked match record. */
+function normalizeEvent(event, bttsEvent) {
   const h2hSets = [];
   const bttsSets = [];
-  let bookCount = 0;
+  const bookmakerKeys = new Set();
   for (const bm of event.bookmakers || []) {
-    const { h2hProbs, bttsProbs } = bookmakerProbs(bm, event.home_team, event.away_team);
-    if (h2hProbs || bttsProbs) bookCount++;
-    if (h2hProbs) h2hSets.push(h2hProbs);
-    if (bttsProbs) bttsSets.push(bttsProbs);
+    const probs = h2hProbsFor(bm, event.home_team, event.away_team);
+    if (probs) { h2hSets.push(probs); bookmakerKeys.add(bm.key); }
+  }
+  for (const bm of bttsEvent?.bookmakers || []) {
+    const probs = bttsProbsFor(bm);
+    if (probs) { bttsSets.push(probs); bookmakerKeys.add(bm.key); }
   }
   if (h2hSets.length === 0 || bttsSets.length === 0) return null;
 
@@ -120,47 +157,51 @@ function normalizeEvent(event) {
     bttsYesPct: round1(bttsYesProb),
     bttsNoPct: round1(bttsNoProb),
     combinedPct: round1(awayWinProb * bttsYesProb),
-    bookmakerCount: bookCount,
+    bookmakerCount: bookmakerKeys.size,
   };
 }
 
 async function main() {
   const sources = {};
-  let rawEvents = [];
+  let matches = [];
   let isSample = false;
   let fallbackReason = null;
+  const now = Date.now();
 
   if (!API_KEY) {
     isSample = true;
     fallbackReason = 'ODDS_API_KEY is not set';
-    rawEvents = buildSampleEvents();
-    sources.sample = { ok: true, events: rawEvents.length };
+    const sampleEvents = buildSampleEvents();
+    matches = sampleEvents.map((e) => normalizeEvent(e, e)).filter(Boolean);
+    sources.sample = { ok: true, events: sampleEvents.length };
   } else {
     for (const league of LEAGUES) {
       try {
-        const events = await retry(() => fetchLeagueEvents(league));
-        sources[league] = { ok: true, events: events.length };
-        rawEvents.push(...events);
+        const events = (await retry(() => fetchLeagueH2h(league)))
+          .filter((e) => new Date(e.commence_time).getTime() > now)
+          .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time))
+          .slice(0, EVENTS_PER_LEAGUE);
+
+        const bttsEvents = await pool(events, (e) => retry(() => fetchEventBtts(league, e.id), 2));
+        const leagueMatches = events.map((e, i) => normalizeEvent(e, bttsEvents[i])).filter(Boolean);
+
+        sources[league] = { ok: true, events: leagueMatches.length };
+        matches.push(...leagueMatches);
       } catch (err) {
         sources[league] = { ok: false, events: 0, error: String(err.message || err) };
         log(`WARN ${league} failed:`, err.message || err);
       }
     }
-    if (rawEvents.length === 0) {
+    if (matches.length === 0) {
       isSample = true;
-      fallbackReason = 'every league request failed, see sources for errors';
-      rawEvents = buildSampleEvents();
-      sources.sample = { ok: true, events: rawEvents.length };
+      fallbackReason = 'every league returned no usable odds, see sources for errors';
+      const sampleEvents = buildSampleEvents();
+      matches = sampleEvents.map((e) => normalizeEvent(e, e)).filter(Boolean);
+      sources.sample = { ok: true, events: sampleEvents.length };
     }
   }
 
-  const now = Date.now();
-  const matches = rawEvents
-    .map(normalizeEvent)
-    .filter(Boolean)
-    .filter((m) => new Date(m.kickoff).getTime() > now)
-    .sort((a, b) => b.combinedPct - a.combinedPct)
-    .slice(0, MAX_MATCHES);
+  matches = matches.sort((a, b) => b.combinedPct - a.combinedPct).slice(0, MAX_MATCHES);
 
   await mkdir(OUT, { recursive: true });
   await writeFile(
