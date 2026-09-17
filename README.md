@@ -46,10 +46,17 @@ default is EPL, the Championship, La Liga, La Liga 2, Bundesliga,
 The `h2h` (match winner) market comes from the main odds endpoint, one
 request per league. The `btts` market is only available per event (The Odds
 API's "additional markets" restriction), so the script makes one further
-request per upcoming fixture. `EVENTS_PER_LEAGUE` (default 8) caps how many
-of each league's soonest fixtures get a btts lookup, to keep a single
-refresh well inside the free-tier monthly quota — lower it if you add more
-leagues or a tighter cron schedule.
+request per upcoming fixture. `EVENTS_PER_LEAGUE` (default 3) caps how many
+of each league's soonest fixtures get a btts lookup.
+
+Quota math at the defaults: 8 leagues x (1 fixtures call + 3 btts calls) = 32
+requests/refresh. At the daily cron in `deploy.yml`, that's ~960/month —
+still over the free tier's 500/month on its own, before counting any manual
+or push-triggered runs, so raising `EVENTS_PER_LEAGUE`, adding leagues, or
+running more than daily will exhaust it faster. If a refresh finds zero
+usable odds (quota exhausted or every request failed), it falls back to the
+bundled sample fixtures rather than erroring, and the dashboard shows a
+banner saying so.
 
 ## Running locally
 

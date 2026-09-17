@@ -50,7 +50,7 @@ const LEAGUES = (process.env.ODDS_LEAGUES || [
 const MAX_MATCHES = Number(process.env.MAX_MATCHES || 200);
 // Each event needs its own request for the btts market, so this bounds the
 // fan-out per league to keep a refresh within the free-tier monthly quota.
-const EVENTS_PER_LEAGUE = Number(process.env.EVENTS_PER_LEAGUE || 8);
+const EVENTS_PER_LEAGUE = Number(process.env.EVENTS_PER_LEAGUE || 3);
 const CONCURRENCY = Number(process.env.CONCURRENCY || 4);
 
 const log = (...a) => console.log('[refresh]', ...a);
