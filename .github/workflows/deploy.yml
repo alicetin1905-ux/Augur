@@ -2,10 +2,12 @@ name: Refresh and deploy dashboard
 
 on:
   schedule:
-    # Best-effort: GitHub throttles high-frequency schedules on public repos,
-    # so this lands closer to hourly in practice, which is fine for fixtures
-    # that are hours or days out.
-    - cron: '0 * * * *'
+    # Once a day: 8 leagues x ~9 requests/league per refresh is already most
+    # of The Odds API's free 500/month quota at this cadence, and fixtures
+    # are hours or days out anyway, so more frequent runs buy nothing but
+    # burn the quota faster (see the OUT_OF_USAGE_CREDITS incident this
+    # replaced hourly runs to avoid repeating).
+    - cron: '0 6 * * *'
   push:
     branches: [main]
   workflow_dispatch:
