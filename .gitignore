@@ -1,0 +1,11 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.cache/
+tmp/
+
+# Built by the refresh pipeline and handed straight to Pages, same reasoning
+# as any generated snapshot: committing it would grow the repo forever for no
+# benefit, since the published site always carries the latest build.
+docs/data/*.json

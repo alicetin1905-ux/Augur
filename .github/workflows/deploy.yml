@@ -1,0 +1,64 @@
+name: Refresh and deploy dashboard
+
+on:
+  schedule:
+    # Best-effort: GitHub throttles high-frequency schedules on public repos,
+    # so this lands closer to hourly in practice, which is fine for fixtures
+    # that are hours or days out.
+    - cron: '0 * * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Read-only on contents: the snapshot is built here and handed straight to
+# Pages, not committed, so the repo doesn't grow with every refresh.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: false
+
+jobs:
+  refresh-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - uses: actions/configure-pages@v5
+
+      - name: Build match snapshot
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: node scripts/refresh.mjs
+
+      - name: Report source health
+        if: always()
+        run: |
+          node -e '
+            const m = require("./docs/data/meta.json");
+            const rows = Object.entries(m.sources)
+              .map(([k, v]) => `| ${k} | ${v.ok ? "ok" : "FAILED"} | ${v.events ?? 0} | ${v.error ?? ""} |`)
+              .join("\n");
+            require("fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+              `### Match refresh\n\n${m.isSample ? `**Sample data** (${m.fallbackReason})\n\n` : ""}` +
+              `| source | status | events | error |\n|---|---|---|---|\n${rows}\n\n` +
+              `Totals: ${m.totals.matches} matches across ${m.totals.leagues} source(s).\n`);
+          '
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

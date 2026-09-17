@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Augur — away win &amp; BTTS odds dashboard</title>
+<meta name="description" content="Upcoming football matches ranked by the implied chance of an away win and of both teams to score, derived from bookmaker odds.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<meta name="theme-color" content="#0d0d0d">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="top">
+  <div class="top-inner">
+    <div class="brand">
+      <h1>Augur</h1>
+      <span class="sub">away win &amp; both-teams-to-score chances</span>
+    </div>
+    <span class="live"><span class="dot" id="statusDot"></span><span id="statusText">loading…</span></span>
+    <button class="btn" id="refreshBtn" type="button">Refresh</button>
+    <button class="btn" id="themeBtn" type="button" aria-label="Toggle colour theme">Light</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="banner" id="sampleBanner" hidden>
+    <span aria-hidden="true">ℹ</span>
+    Showing bundled sample fixtures, not live odds. Set <code>ODDS_API_KEY</code>
+    (a free key from <a href="https://the-odds-api.com" target="_blank" rel="noopener">the-odds-api.com</a>)
+    as a repo secret to switch this dashboard to real matches.
+  </div>
+
+  <section class="tiles" id="tiles" aria-label="Aggregate statistics">
+    <div class="tile"><div class="k">Matches tracked</div><div class="v" id="tMatches">—</div></div>
+    <div class="tile"><div class="k">Leagues covered</div><div class="v" id="tLeagues">—</div></div>
+    <div class="tile"><div class="k">Top combined chance</div><div class="v" id="tTopCombined">—</div></div>
+    <div class="tile"><div class="k">Kickoffs in 24h</div><div class="v" id="tSoon">—</div></div>
+  </section>
+
+  <div class="controls">
+    <div class="chips" id="leagueChips" role="group" aria-label="Filter by league"></div>
+    <input type="search" id="search" placeholder="Search team or league…" aria-label="Search teams and leagues">
+    <select id="sort" aria-label="Sort matches by">
+      <option value="combined">Sort: away win × BTTS</option>
+      <option value="away">Sort: away win chance</option>
+      <option value="btts">Sort: BTTS chance</option>
+      <option value="kickoff">Sort: kickoff (soonest)</option>
+    </select>
+    <select id="minCombined" aria-label="Minimum combined chance">
+      <option value="0" selected>Any chance</option>
+      <option value="20">Min 20%</option>
+      <option value="30">Min 30%</option>
+      <option value="40">Min 40%</option>
+    </select>
+  </div>
+
+  <section class="panel">
+    <h2>Upcoming matches
+      <span class="hint desc">— ranked by the de-vigged chance of an away win landing together with both teams scoring</span>
+      <span class="hint" id="rowCount"></span>
+    </h2>
+    <div class="table-wrap">
+      <table id="matchTable">
+        <thead>
+          <tr>
+            <th data-sort="kickoff">Kickoff</th>
+            <th>League</th>
+            <th>Home</th>
+            <th>Away</th>
+            <th data-sort="home" class="num">Home %</th>
+            <th data-sort="draw" class="num">Draw %</th>
+            <th data-sort="away" class="num">Away %</th>
+            <th data-sort="btts" class="num">BTTS %</th>
+            <th data-sort="combined" class="num">Combined %</th>
+            <th class="num">Books</th>
+          </tr>
+        </thead>
+        <tbody id="matchBody">
+          <tr><td colspan="10" class="empty">Loading matches…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    Odds imply probabilities, not certainties — bookmaker margins are removed
+    here but nothing here is betting advice. If gambling stops being fun,
+    <a href="https://www.begambleaware.org" target="_blank" rel="noopener">BeGambleAware.org</a> can help.
+  </footer>
+
+</div>
+
+<script src="js/app.js" type="module"></script>
+</body>
+</html>

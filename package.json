@@ -1,0 +1,13 @@
+{
+  "name": "augur",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dashboard ranking upcoming football matches by implied chance of an away win and both teams to score.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "refresh": "node scripts/refresh.mjs",
+    "serve": "node scripts/serve.mjs"
+  },
+  "license": "MIT"
+}
