@@ -39,7 +39,9 @@ const REGIONS = process.env.ODDS_REGIONS || 'uk,eu';
 // Sport keys as documented at https://the-odds-api.com/sports-odds-data/soccer-odds.html
 const LEAGUES = (process.env.ODDS_LEAGUES || [
   'soccer_epl',
+  'soccer_efl_champ',
   'soccer_spain_la_liga',
+  'soccer_spain_segunda_division',
   'soccer_italy_serie_a',
   'soccer_germany_bundesliga',
   'soccer_germany_bundesliga2',
